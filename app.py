@@ -1,8 +1,9 @@
 from flask import Flask, request, jsonify, render_template
 from config import Config
-from utils import decrypt_filename, find_file, process_file_retrieval, save_file_randomly, encrypt_filename
+from utils import decrypt_data, find_files_in_paths, process_file_retrieval, save_file_to_dir, encrypt_data
 import os
 import mysql.connector
+import random
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -22,57 +23,55 @@ def index():
 @app.route('/search', methods=['POST'])
 def search_file():
     """
-    Endpoint to search for a file via the web UI using 'nomor_surat'.
-    Input JSON: { "data": "SK/..." } (Using generic key or specific 'nomor_surat')
+    Endpoint to search for files via the web UI using 'nomor_surat'.
+    Input JSON: { "filename": "SK/..." } (Nomor Surat)
     """
     data = request.get_json()
-    # Accept 'nomor_surat' or 'filename' to be flexible, but UI sends 'nomor_surat' via the input name but let's check
-    # The UI input name is 'nomor_surat', but the JS sends { filename: ... }. 
-    # Let's support both logic: direct filename OR lookup by no_surat.
-    # Given the user request "masukin nomor surat -> dapat file", we should look up DB first.
-    
-    query_input = data.get('filename') # The JS sends 'filename' key currently.
+    query_input = data.get('filename') # 'filename' key is used for Nomor Surat input
     
     if not query_input:
         return jsonify({"error": "Nomor Surat is required"}), 400
-        
-    filename_to_search = query_input
     
-    # 1. Database Lookup
+    filenames = []
+    
+    # 1. Database Lookup (Get Encrypted List)
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        # exact match or like? User said "memasaukan nomor suratnya saja". Let's try exact first.
-        cursor.execute("SELECT path FROM surat WHERE no_surat = %s LIMIT 1", (query_input,))
+        # We need the 'encrip' column which holds the list of filenames
+        cursor.execute("SELECT encrip FROM surat WHERE no_surat = %s LIMIT 1", (query_input,))
         result = cursor.fetchone()
         conn.close()
         
         if result:
-            db_path = result[0]
-            # Extract basic filename from the DB path (e.g. /files/surat/doc.pdf -> doc.pdf)
-            filename_to_search = os.path.basename(db_path)
+            encrypted_key = result[0]
+            # Decrypt to get the list of filenames
+            filenames = decrypt_data(encrypted_key, app.config['SECRET_KEY'])
+            if not filenames:
+                return jsonify({"error": "Failed to decrypt file data"}), 500
         else:
-            # Fallback: maybe they entered the filename directly?
-            # We keep filename_to_search as query_input
-            pass
+            # Fallback: maybe they entered a direct filename?
+            # Supporting direct filename search might be tricky with multiple files logic.
+            # Let's treat it as a single file list if no DB match.
+            filenames = [query_input]
             
     except Exception as e:
         print(f"Database error: {e}")
         return jsonify({"error": "Database connection failed"}), 500
 
-    # 2. Find the file (System Search)
+    # 2. Find the files (System Search)
     search_paths = app.config['SEARCH_PATHS']
-    found_path = find_file(filename_to_search, search_paths)
+    found_paths = find_files_in_paths(filenames, search_paths)
     
-    if not found_path:
-        return jsonify({"error": f"File '{filename_to_search}' not found in storage"}), 404
+    if not found_paths:
+        return jsonify({"error": "Files not found in storage"}), 404
 
-    # 3. Process (zip/move)
+    # 3. Process (zip multiple files)
     staging_dir = app.config['STAGING_DIR']
-    zip_filename = process_file_retrieval(found_path, staging_dir)
+    zip_filename = process_file_retrieval(found_paths, staging_dir)
     
     if not zip_filename:
-        return jsonify({"error": "System error: Failed to process file"}), 500
+        return jsonify({"error": "System error: Failed to process files"}), 500
 
     # 4. Generate SCP Command
     server_host = request.host.split(':')[0]
@@ -80,7 +79,7 @@ def search_file():
 
     return jsonify({
         "status": "success",
-        "original_filename": filename_to_search,
+        "original_filenames": filenames,
         "download_command": scp_command
     })
 
@@ -88,7 +87,7 @@ def search_file():
 @app.route('/retrieve', methods=['GET'])
 def retrieve_file():
     """
-    Endpoint to retrieve a file based on an encrypted key.
+    Endpoint to retrieve files based on an encrypted key.
     URL: /retrieve?key=<encrypted_key>
     """
     encrypted_key = request.args.get('key')
@@ -96,85 +95,91 @@ def retrieve_file():
     if not encrypted_key:
         return jsonify({"error": "Missing 'key' parameter"}), 400
 
-    # 1. Decrypt the filename
-    filename = decrypt_filename(encrypted_key, app.config['SECRET_KEY'])
+    # 1. Decrypt the key -> List of filenames
+    filenames = decrypt_data(encrypted_key, app.config['SECRET_KEY'])
     
-    if not filename:
+    if not filenames:
         return jsonify({"error": "Invalid key or decryption failed"}), 400
 
-    # 2. Find the file in the search paths
+    # 2. Find the files in the search paths
     search_paths = app.config['SEARCH_PATHS']
-    found_path = find_file(filename, search_paths)
+    found_paths = find_files_in_paths(filenames, search_paths)
     
-    if not found_path:
-        return jsonify({"error": "File not found in any storage location"}), 404
+    if not found_paths:
+        return jsonify({"error": "Files not found in any storage location"}), 404
 
-    # 3. Process the file (move to staging and zip)
+    # 3. Process the files (zip them)
     staging_dir = app.config['STAGING_DIR']
-    zip_filename = process_file_retrieval(found_path, staging_dir)
+    zip_filename = process_file_retrieval(found_paths, staging_dir)
     
     if not zip_filename:
-        return jsonify({"error": "Failed to process the file"}), 500
+        return jsonify({"error": "Failed to process the files"}), 500
 
     # 4. Generate the SCP command response
-    # Assuming the server is accessed via IP or hostname, we'll genericize it.
-    # In a real scenario, you use request.host or a configured hostname.
     server_host = request.host.split(':')[0] 
-    # Use a dummy user path or the actual path if known. 
-    # The requirement says: "output perintah scp untuk mendownlod file tersebut dari server"
-    # We will assume the user running the command has SSH access to the staging dir location
-    
-    # Constructing the SCP command
-    # scp user@server:/home/scpkan/unique_name.zip ./
-    
     scp_command = f"scp user@{server_host}:{staging_dir}/{zip_filename} ./"
 
     return jsonify({
         "res": 200,
         "message": "Berhasil Decrypt!",
-        "data": [filename],
-        # We include the SCP command as extra data since the user mentioned "ada opsi untuk langsung download atau salin scp script"
-        # The frontend can use this.
+        "data": filenames,
         "scp_command": scp_command
     })
+
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
     """
-    Endpoint to upload a file.
-    Form Data: 'file', 'nomor_surat'
+    Endpoint to upload multiple files.
+    Form Data: 'file' (multiple), 'nomor_surat'
     Behavior:
-    1. Save file to random location.
-    2. Encrypt filename (to generate 'encrip' key).
-    3. Insert into DB (no_surat, path, encrip).
+    1. Select ONE random directory.
+    2. Save ALL files there.
+    3. Encrypt the LIST of filenames.
+    4. Insert into DB (no_surat, path, encrip).
     """
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
         
-    file = request.files['file']
+    files = request.files.getlist('file')
     nomor_surat = request.form.get('nomor_surat')
     
-    if file.filename == '' or not nomor_surat:
-        return jsonify({"error": "No selected file or missing nomor_surat"}), 400
+    if not files or not nomor_surat:
+        return jsonify({"error": "No selected files or missing nomor_surat"}), 400
 
-    # 1. Save Randomly
+    # 1. Select Random Directory
     search_paths = app.config['SEARCH_PATHS']
-    saved_path = save_file_randomly(file, search_paths)
+    if not search_paths:
+        return jsonify({"error": "No search paths configured"}), 500
+        
+    target_dir = random.choice(search_paths)
+    saved_filenames = []
     
-    if not saved_path:
-        return jsonify({"error": "Failed to save file"}), 500
+    # 2. Save All Files
+    try:
+        for file in files:
+            if file.filename == '':
+                continue
+            full_path = save_file_to_dir(file, target_dir)
+            saved_filenames.append(os.path.basename(full_path))
+            
+        if not saved_filenames:
+            return jsonify({"error": "No valid files saved"}), 400
+            
+    except Exception as e:
+        print(f"File save error: {e}")
+        return jsonify({"error": "Failed to save files locally"}), 500
 
-    # 2. Encrypt Key (for legacy compatibility)
-    filename = os.path.basename(saved_path)
-    encrypted_key = encrypt_filename(filename, app.config['SECRET_KEY'])
+    # 3. Encrypt List of Filenames
+    encrypted_key = encrypt_data(saved_filenames, app.config['SECRET_KEY'])
     
-    # 3. Insert into Database
+    # 4. Insert into Database
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Store only the directory path, not the full path
-        directory_path = os.path.dirname(saved_path)
+        # Store only the directory path
+        directory_path = target_dir
         
         sql = "INSERT INTO surat (no_surat, path, encrip) VALUES (%s, %s, %s)"
         val = (nomor_surat, directory_path, encrypted_key)
@@ -185,8 +190,9 @@ def upload_file():
         
         return jsonify({
             "status": "success",
-            "message": "File uploaded and stored safely",
-            "stored_path": saved_path
+            "message": "Files uploaded and stored safely",
+            "stored_path": directory_path,
+            "filenames": saved_filenames
         })
         
     except Exception as e:

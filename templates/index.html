@@ -58,7 +58,7 @@
 
                 <div class="input-group">
                     <label for="file_upload">Select File</label>
-                    <input type="file" id="file_upload" name="file" required>
+                    <input type="file" id="file_upload" name="file" multiple required>
                 </div>
 
                 <button type="submit" id="uploadBtn">
@@ -151,7 +151,8 @@
                 const data = await response.json();
 
                 if (response.ok) {
-                    uploadMsg.textContent = `Stored at: ${data.stored_path}`;
+                    const count = data.filenames ? data.filenames.length : 1;
+                    uploadMsg.textContent = `Stored ${count} file(s) at: ${data.stored_path}`;
                     uploadResultArea.style.display = 'block';
                     uploadForm.reset();
                 } else {

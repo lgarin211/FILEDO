@@ -21,7 +21,7 @@ class Config:
     # STAGING_DIR = 'd:\\EXPERIMENT\\FILEDO\\staging'
 
     # Database Configuration
-    MYSQL_HOST = '127.0.0.1'
+    MYSQL_HOST = 'localhost'
     MYSQL_USER = 'root'
     MYSQL_PASSWORD = ''
     MYSQL_DB = 'lfdeo'

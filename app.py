@@ -130,10 +130,12 @@ def retrieve_file():
     scp_command = f"scp user@{server_host}:{staging_dir}/{zip_filename} ./"
 
     return jsonify({
-        "status": "success",
-        "message": "File prepared successfully",
-        "original_filename": filename,
-        "download_command": scp_command
+        "res": 200,
+        "message": "Berhasil Decrypt!",
+        "data": [filename],
+        # We include the SCP command as extra data since the user mentioned "ada opsi untuk langsung download atau salin scp script"
+        # The frontend can use this.
+        "scp_command": scp_command
     })
 
 @app.route('/upload', methods=['POST'])
@@ -171,8 +173,11 @@ def upload_file():
         conn = get_db_connection()
         cursor = conn.cursor()
         
+        # Store only the directory path, not the full path
+        directory_path = os.path.dirname(saved_path)
+        
         sql = "INSERT INTO surat (no_surat, path, encrip) VALUES (%s, %s, %s)"
-        val = (nomor_surat, saved_path, encrypted_key)
+        val = (nomor_surat, directory_path, encrypted_key)
         
         cursor.execute(sql, val)
         conn.commit()

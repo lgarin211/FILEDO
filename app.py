@@ -33,34 +33,45 @@ def search_file():
         return jsonify({"error": "Nomor Surat is required"}), 400
     
     filenames = []
+    target_path = None
     
-    # 1. Database Lookup (Get Encrypted List)
+    # 1. Database Lookup (Get Encrypted List and Path)
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        # We need the 'encrip' column which holds the list of filenames
-        cursor.execute("SELECT encrip FROM surat WHERE no_surat = %s LIMIT 1", (query_input,))
+        # Retrieve 'encrip' (filenames) and 'path' (directory)
+        cursor.execute("SELECT encrip, path FROM surat WHERE no_surat = %s LIMIT 1", (query_input,))
         result = cursor.fetchone()
         conn.close()
         
         if result:
             encrypted_key = result[0]
+            db_path = result[1]
+            
             # Decrypt to get the list of filenames
             filenames = decrypt_data(encrypted_key, app.config['SECRET_KEY'])
             if not filenames:
                 return jsonify({"error": "Failed to decrypt file data"}), 500
+                
+            # Use the DB path as the target for search
+            target_path = db_path
+            
         else:
             # Fallback: maybe they entered a direct filename?
-            # Supporting direct filename search might be tricky with multiple files logic.
-            # Let's treat it as a single file list if no DB match.
             filenames = [query_input]
+            # No DB path, search everywhere
+            target_path = None
             
     except Exception as e:
         print(f"Database error: {e}")
         return jsonify({"error": "Database connection failed"}), 500
 
-    # 2. Find the files (System Search)
-    search_paths = app.config['SEARCH_PATHS']
+    # 2. Find the files (Using specific DB path if available, else SEARCH_PATHS)
+    if target_path:
+        search_paths = [target_path]
+    else:
+        search_paths = app.config['SEARCH_PATHS']
+        
     found_paths = find_files_in_paths(filenames, search_paths)
     
     if not found_paths:
@@ -101,21 +112,46 @@ def retrieve_file():
     if not filenames:
         return jsonify({"error": "Invalid key or decryption failed"}), 400
 
-    # 2. Find the files in the search paths
-    search_paths = app.config['SEARCH_PATHS']
+    target_path = None
+    
+    # 2. Database Lookup to find the correct path for this key
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # Find the path associated with this encrypted key
+        # Assuming encrypted_key passed in URL matches DB exactly.
+        cursor.execute("SELECT path FROM surat WHERE encrip = %s LIMIT 1", (encrypted_key,))
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            target_path = result[0]
+            
+    except Exception as e:
+        print(f"Database lookup error: {e}")
+        # We can continue with fallback search or fail.
+        # Let's log it and try fallback.
+        pass
+
+    # 3. Find the files (Using specific DB path if found, else SEARCH_PATHS)
+    if target_path:
+        search_paths = [target_path]
+    else:
+        search_paths = app.config['SEARCH_PATHS']
+        
     found_paths = find_files_in_paths(filenames, search_paths)
     
     if not found_paths:
         return jsonify({"error": "Files not found in any storage location"}), 404
 
-    # 3. Process the files (zip them)
+    # 4. Process the files (zip them)
     staging_dir = app.config['STAGING_DIR']
     zip_filename = process_file_retrieval(found_paths, staging_dir)
     
     if not zip_filename:
         return jsonify({"error": "Failed to process the files"}), 500
 
-    # 4. Generate the SCP command response
+    # 5. Generate the SCP command response
     server_host = request.host.split(':')[0] 
     scp_command = f"scp user@{server_host}:{staging_dir}/{zip_filename} ./"
 

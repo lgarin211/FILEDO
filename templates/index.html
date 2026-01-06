@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure File Portal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Fira+Code&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+
+    <div class="container">
+        <h1>File Retrieval</h1>
+        <p class="subtitle">Securely access and download your documents</p>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-target="searchSection">Search</button>
+            <button class="tab-btn" data-target="uploadSection">Upload</button>
+        </div>
+
+        <!-- Search Section -->
+        <div id="searchSection" class="form-section active">
+            <form id="searchForm">
+                <div class="input-group">
+                    <label for="nomor_surat_search">Nomor Surat / Filename</label>
+                    <input type="text" id="nomor_surat_search" name="nomor_surat"
+                        placeholder="e.g. Surat_Penting_001.pdf" required autocomplete="off">
+                </div>
+
+                <button type="submit" id="searchBtn">
+                    <span class="btn-text">Find Document</span>
+                    <div class="loader"></div>
+                </button>
+            </form>
+
+            <div class="result" id="resultArea">
+                <h3>Download Command (SCP)</h3>
+                <div class="command-box" id="scpCommand" onclick="copyToClipboard()">
+                    <!-- Command will appear here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload Section -->
+        <div id="uploadSection" class="form-section">
+            <form id="uploadForm">
+                <div class="input-group">
+                    <label for="nomor_surat_upload">Nomor Surat</label>
+                    <input type="text" id="nomor_surat_upload" name="nomor_surat" placeholder="e.g. SK-001/PLZ/I/2026"
+                        required autocomplete="off">
+                </div>
+
+                <div class="input-group">
+                    <label for="file_upload">Select File</label>
+                    <input type="file" id="file_upload" name="file" required>
+                </div>
+
+                <button type="submit" id="uploadBtn">
+                    <span class="btn-text">Upload Document</span>
+                    <div class="loader"></div>
+                </button>
+            </form>
+
+            <div class="result" id="uploadResultArea"
+                style="background: rgba(16, 185, 129, 0.2); border-color: rgba(16, 185, 129, 0.4);">
+                <h3 style="color: #6ee7b7;">Upload Successful</h3>
+                <p id="uploadMsg" style="color: #d1fae5; font-size: 0.9rem; margin-top: 0.5rem;"></p>
+            </div>
+        </div>
+
+        <p class="error-msg" id="errorMsg"></p>
+    </div>
+
+    <script>
+        // Tab Switching
+        const tabs = document.querySelectorAll('.tab-btn');
+        const sections = document.querySelectorAll('.form-section');
+        const errorMsg = document.getElementById('errorMsg');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                sections.forEach(s => s.classList.remove('active'));
+
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.target).classList.add('active');
+                errorMsg.style.display = 'none';
+            });
+        });
+
+        // Search Logic
+        const searchForm = document.getElementById('searchForm');
+        const searchBtn = document.getElementById('searchBtn');
+        const resultArea = document.getElementById('resultArea');
+        const scpCommand = document.getElementById('scpCommand');
+
+        searchForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            resetUI(searchBtn, resultArea);
+
+            const filename = document.getElementById('nomor_surat_search').value.trim();
+
+            try {
+                const response = await fetch('/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: filename })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    scpCommand.textContent = data.download_command;
+                    resultArea.style.display = 'block';
+                } else {
+                    showError(data.error || 'Search failed.');
+                }
+            } catch (err) {
+                showError('Network error during search.');
+            } finally {
+                searchBtn.disabled = false;
+                searchBtn.querySelector('.btn-text').style.display = 'inline';
+                searchBtn.querySelector('.loader').style.display = 'none';
+            }
+        });
+
+        // Upload Logic
+        const uploadForm = document.getElementById('uploadForm');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const uploadResultArea = document.getElementById('uploadResultArea');
+        const uploadMsg = document.getElementById('uploadMsg');
+
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            resetUI(uploadBtn, uploadResultArea);
+
+            const formData = new FormData(uploadForm);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    uploadMsg.textContent = `Stored at: ${data.stored_path}`;
+                    uploadResultArea.style.display = 'block';
+                    uploadForm.reset();
+                } else {
+                    showError(data.error || 'Upload failed.');
+                }
+            } catch (err) {
+                showError('Network error during upload.');
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.querySelector('.btn-text').style.display = 'inline';
+                uploadBtn.querySelector('.loader').style.display = 'none';
+            }
+        });
+
+        function resetUI(btn, resultDiv) {
+            errorMsg.style.display = 'none';
+            if (resultDiv) resultDiv.style.display = 'none';
+
+            btn.disabled = true;
+            btn.querySelector('.btn-text').style.display = 'none';
+            btn.querySelector('.loader').style.display = 'block';
+        }
+
+        function showError(msg) {
+            errorMsg.textContent = msg;
+            errorMsg.style.display = 'block';
+        }
+
+        function copyToClipboard() {
+            const text = scpCommand.textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Command copied!');
+            });
+        }
+    </script>
+</body>
+
+</html>

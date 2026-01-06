@@ -1,0 +1,289 @@
+:root {
+  --primary-color: #6366f1;
+  --secondary-color: #ec4899;
+  --bg-color: #0f172a;
+  --text-color: #f8fafc;
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Background blob effects */
+.blob {
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  filter: blur(80px);
+  z-index: -1;
+  opacity: 0.6;
+  animation: move 20s infinite alternate;
+}
+
+.blob-1 {
+  background: var(--primary-color);
+  top: -100px;
+  left: -100px;
+}
+
+.blob-2 {
+  background: var(--secondary-color);
+  bottom: -100px;
+  right: -100px;
+  animation-delay: -5s;
+}
+
+@keyframes move {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(50px, 50px) scale(1.1); }
+}
+
+.container {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  padding: 3rem;
+  width: 100%;
+  max-width: 500px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+h1 {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(to right, #818cf8, #f472b6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
+}
+
+p.subtitle {
+  color: #94a3b8;
+  margin-bottom: 2rem;
+}
+
+.input-group {
+  margin-bottom: 1.5rem;
+  text-align: left;
+}
+
+label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  color: #cbd5e1;
+}
+
+input[type="text"] {
+  width: 100%;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: white;
+  font-size: 1rem;
+  outline: none;
+  transition: all 0.3s ease;
+}
+
+input[type="text"]:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+button {
+  width: 100%;
+  padding: 1rem;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, opacity 0.2s;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+button:hover {
+  transform: translateY(-2px);
+  opacity: 0.9;
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+.result {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  text-align: left;
+  display: none; /* Hidden by default */
+  animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.result h3 {
+  font-size: 1rem;
+  color: #cbd5e1;
+  margin-bottom: 0.5rem;
+}
+
+.command-box {
+  background: #1e293b;
+  padding: 1rem;
+  border-radius: 8px;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.9rem;
+  color: #a5b4fc;
+  word-break: break-all;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.command-box:hover {
+  background: #334155;
+}
+
+.command-box::after {
+  content: 'Click to copy';
+  position: absolute;
+  top: -25px;
+  right: 0;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.command-box:hover::after {
+  opacity: 1;
+}
+
+.loader {
+  display: none;
+  border: 3px solid rgba(255,255,255,0.1);
+  border-radius: 50%;
+  border-top: 3px solid var(--primary-color);
+  width: 24px;
+  height: 24px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-msg {
+  color: #ef4444;
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  display: none;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  margin-bottom: 2rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  padding: 0.5rem;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 0.75rem;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: none;
+}
+
+.tab-btn.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.tab-btn:hover:not(.active) {
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.form-section {
+  display: none;
+  animation: fadeIn 0.3s ease;
+}
+
+.form-section.active {
+  display: block;
+}
+
+/* File Input */
+input[type="file"] {
+  width: 100%;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px dashed var(--glass-border);
+  background: rgba(255, 255, 255, 0.02);
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+input[type="file"]:hover {
+  border-color: var(--primary-color);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+input[type="file"]::file-selector-button {
+  margin-right: 1rem;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: none;
+  background: var(--primary-color);
+  color: white;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8rem;
+  transition: opacity 0.2s;
+}
+
+input[type="file"]::file-selector-button:hover {
+  opacity: 0.9;
+}
